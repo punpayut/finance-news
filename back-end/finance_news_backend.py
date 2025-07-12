@@ -27,6 +27,7 @@ from dotenv import load_dotenv
 
 import firebase_admin
 from firebase_admin import credentials, firestore
+import json # Import json module
 
 # --- Initialization ---
 load_dotenv()
@@ -35,18 +36,17 @@ logger = logging.getLogger(__name__)
 
 # --- Firebase Initialization ---
 try:
-    key_path = "firebase-key.json"
-    if os.path.exists(key_path):
-        logger.info(f"WEB APP: Found Firebase key file at {key_path}. Attempting to use it.")
-        cred = credentials.Certificate(key_path)
-        # Check if the app is already initialized to prevent errors
-        if not firebase_admin._apps:
-            firebase_admin.initialize_app(cred)
+    firebase_credentials_json = os.getenv("FIREBASE_CREDENTIALS_JSON")
+    if firebase_credentials_json:
+        logger.info("WEB APP: Found FIREBASE_CREDENTIALS_JSON environment variable. Attempting to use it.")
+        cred = credentials.Certificate(json.loads(firebase_credentials_json))
     else:
-        logger.error(f"WEB APP: Firebase key file not found at {key_path}. Please ensure it exists and is a valid service account key.")
-        raise FileNotFoundError(f"Firebase key file not found at {key_path}")
-        
-    db_firestore = firestore.client()
+        key_path = "firebase-key.json"
+        if os.path.exists(key_path):
+            logger.info(f"WEB APP: Found Firebase key file at {key_path}. Attempting to use it.")
+            cred = credentials.Certificate(key_path)
+        else:
+            logger.error(f"WEB APP: Firebase credentials not found. Neither FIREBASE_CREDENTIALS_JSON env var nor file at {key_path} exists.")
     analyzed_news_collection = db_firestore.collection('analyzed_news')
     # <<< CHANGE 1: Add the daily_briefs collection reference here >>>
     daily_briefs_collection = db_firestore.collection('daily_briefs')
@@ -165,7 +165,7 @@ def index():
 
 
 # <<< CHANGE 2: ADD THE NEW ENDPOINT FOR THE DAILY BRIEFING >>>
-@app.route('/api/daily_brief')
+@app.route('/daily_brief')
 def get_daily_brief():
     if not daily_briefs_collection:
         return jsonify({"status": "error", "message": "Database connection not available."}), 500
@@ -193,7 +193,7 @@ def get_daily_brief():
         return jsonify({"status": "error", "message": "Could not load the daily brief."}), 500
 
 
-@app.route('/api/main_feed')
+@app.route('/main_feed')
 def get_main_feed():
     if not analyzed_news_collection:
         return jsonify({"status": "error", "message": "Database connection not available."}), 500
@@ -246,7 +246,7 @@ def get_main_feed():
         logger.error(f"WEB APP: Error fetching feed from Firestore: {e}", exc_info=True)
         return jsonify({"status": "error", "message": "Could not load feed from database."}), 500
 
-@app.route('/api/ask', methods=['POST'])
+@app.route('/ask', methods=['POST'])
 def ask_question():
     data = request.get_json()
     question = data.get('question')
