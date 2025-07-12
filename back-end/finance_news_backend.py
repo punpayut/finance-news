@@ -47,6 +47,11 @@ try:
             cred = credentials.Certificate(key_path)
         else:
             logger.error(f"WEB APP: Firebase credentials not found. Neither FIREBASE_CREDENTIALS_JSON env var nor file at {key_path} exists.")
+    
+    # Initialize Firebase app and Firestore client after credentials are set
+    firebase_admin.initialize_app(cred)
+    db_firestore = firestore.client()
+
     analyzed_news_collection = db_firestore.collection('analyzed_news')
     # <<< CHANGE 1: Add the daily_briefs collection reference here >>>
     daily_briefs_collection = db_firestore.collection('daily_briefs')
@@ -165,7 +170,7 @@ def index():
 
 
 # <<< CHANGE 2: ADD THE NEW ENDPOINT FOR THE DAILY BRIEFING >>>
-@app.route('/daily_brief')
+@app.route('/api/daily_brief')
 def get_daily_brief():
     if not daily_briefs_collection:
         return jsonify({"status": "error", "message": "Database connection not available."}), 500
@@ -193,7 +198,7 @@ def get_daily_brief():
         return jsonify({"status": "error", "message": "Could not load the daily brief."}), 500
 
 
-@app.route('/main_feed')
+@app.route('/api/main_feed')
 def get_main_feed():
     if not analyzed_news_collection:
         return jsonify({"status": "error", "message": "Database connection not available."}), 500
@@ -246,7 +251,7 @@ def get_main_feed():
         logger.error(f"WEB APP: Error fetching feed from Firestore: {e}", exc_info=True)
         return jsonify({"status": "error", "message": "Could not load feed from database."}), 500
 
-@app.route('/ask', methods=['POST'])
+@app.route('/api/ask', methods=['POST'])
 def ask_question():
     data = request.get_json()
     question = data.get('question')
