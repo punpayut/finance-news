@@ -1,10 +1,13 @@
 import { useState, useEffect } from 'react';
-// ไอคอนใหม่ที่เพิ่มเข้ามาสำหรับ UI ของ Daily Brief
 import { ChevronLeft, ChevronRight, ChevronDown, TrendingUp, Calendar, Sparkles, Loader2, List, Activity, Eye } from 'lucide-react'; 
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { Textarea } from '@/components/ui/textarea'; // Assuming you have a Textarea component
-import { Input } from '@/components/ui/input'; // Assuming you have an Input component
+import { Textarea } from '@/components/ui/textarea';
+import { Input } from '@/components/ui/input';
+
+// <<< MODIFIED #1: Get the backend URL from environment variables. >>>
+// This is the most important change. Vite will replace this with the actual URL during build.
+const BACKEND_URL = import.meta.env.VITE_API_BASE_URL;
 
 interface StockData {
   symbol: string;
@@ -22,14 +25,13 @@ interface NewsItem {
   content?: string;
   analysis?: {
     summary_en?: string;
-    summary_th?: string; // Added for Thai summary
+    summary_th?: string;
     impact?: string;
-    impact_score?: number; // Added for impact score
+    impact_score?: number;
     affected_symbols?: string[];
   };
 }
 
-// <<< CHANGE 1: ADD THE DailyBrief INTERFACE >>>
 interface DailyBrief {
   market_headline: string;
   market_overview: string;
@@ -42,15 +44,13 @@ interface DailyBrief {
   };
 }
 
-
 type SwipeDirection = 'center' | 'left' | 'right';
 
 const Index = () => {
-  
   const [currentNewsIndex, setCurrentNewsIndex] = useState(0);
   const [currentView, setCurrentView] = useState<SwipeDirection>('center');
   const [startX, setStartX] = useState(0);
-  const [startY, setStartY] = useState(0); 
+  const [startY, setStartY] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
 
   const [news, setNews] = useState<NewsItem[]>([]);
@@ -62,21 +62,28 @@ const Index = () => {
   const [aiAnswer, setAiAnswer] = useState('');
   const [askingQuestion, setAskingQuestion] = useState(false);
   const [qaError, setQaError] = useState<string | null>(null);
-  
-  // <<< CHANGE 2: ADD NEW STATE HOOKS FOR THE BRIEFING >>>
+
   const [dailyBrief, setDailyBrief] = useState<DailyBrief | null>(null);
   const [briefError, setBriefError] = useState<string | null>(null);
 
   useEffect(() => {
-    // <<< CHANGE 3: MODIFY THE useEffect TO FETCH BOTH FEEDS >>>
     const fetchAllData = async () => {
+      // <<< MODIFIED #2: Throw an error if the backend URL is not set. >>>
+      if (!BACKEND_URL) {
+        setError("Configuration error: The backend API URL is not set.");
+        setLoading(false);
+        return;
+      }
+
       try {
         setLoading(true);
         setError(null);
         setBriefError(null);
 
-        // Your original, working fetch logic for the main feed
-        const mainFeedResponse = await fetch('/api/main_feed');
+        // <<< MODIFIED #3: Use the full URL for the main_feed endpoint. >>>
+        console.log(`Fetching main feed from: ${BACKEND_URL}/api/main_feed`);
+        const mainFeedResponse = await fetch(`${BACKEND_URL}/api/main_feed`);
+
         if (!mainFeedResponse.ok) {
           throw new Error(`HTTP error! status: ${mainFeedResponse.status}`);
         }
@@ -88,9 +95,11 @@ const Index = () => {
           setError(mainFeedResult.message || 'Failed to fetch data.');
         }
 
-        // Safely fetch the daily brief in addition. This won't break the app if it fails.
         try {
-          const briefResponse = await fetch('/api/daily_brief');
+          // <<< MODIFIED #4: Use the full URL for the daily_brief endpoint. >>>
+          console.log(`Fetching daily brief from: ${BACKEND_URL}/api/daily_brief`);
+          const briefResponse = await fetch(`${BACKEND_URL}/api/daily_brief`);
+
           if (briefResponse.ok) {
             const briefResult = await briefResponse.json();
             if (briefResult.status === 'success') {
@@ -99,7 +108,7 @@ const Index = () => {
               setBriefError(briefResult.message);
             }
           } else {
-             setBriefError(`Brief not available (HTTP ${briefResponse.status})`);
+            setBriefError(`Brief not available (HTTP ${briefResponse.status})`);
           }
         } catch (briefFetchError) {
           console.error("Could not fetch daily brief:", briefFetchError);
@@ -119,11 +128,20 @@ const Index = () => {
   const handleAskQuestion = async () => {
     if (!userQuestion.trim()) return;
 
+    // <<< MODIFIED #5: Add check for backend URL before making the API call. >>>
+    if (!BACKEND_URL) {
+      setQaError("Configuration error: Backend API URL is missing.");
+      return;
+    }
+
     try {
       setAskingQuestion(true);
       setQaError(null);
       setAiAnswer('');
-      const response = await fetch('/api/ask', {
+
+      // <<< MODIFIED #6: Use the full URL for the ask endpoint. >>>
+      console.log(`Asking question to: ${BACKEND_URL}/api/ask`);
+      const response = await fetch(`${BACKEND_URL}/api/ask`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -147,6 +165,9 @@ const Index = () => {
     }
   };
 
+  // ... (No other changes needed below this line) ...
+  // ... (The rest of your component's logic and JSX remains the same) ...
+
   const handleTouchStart = (e: React.TouchEvent) => {
     setStartX(e.touches[0].clientX);
     setStartY(e.touches[0].clientY);
@@ -156,43 +177,34 @@ const Index = () => {
   const handleTouchEnd = (e: React.TouchEvent) => {
     if (!isDragging) return;
 
-    // ตำแหน่งสิ้นสุดการปัด
     const endX = e.changedTouches[0].clientX;
     const endY = e.changedTouches[0].clientY;
 
-    // ระยะทางที่ปัดในแต่ละแกน
     const diffX = startX - endX;
     const diffY = startY - endY;
 
-    // ตรวจสอบว่าแกนไหนมีการเคลื่อนที่มากกว่ากัน
     if (Math.abs(diffX) > Math.abs(diffY)) {
-        // --- การปัดแนวนอน (Horizontal Swipe) มีผลมากกว่า ---
-        if (Math.abs(diffX) > 50) { // เช็คระยะปัดขั้นต่ำ
+        if (Math.abs(diffX) > 50) {
             const isSwipeLeft = diffX > 0;
             const isSwipeRight = diffX < 0;
 
-            if (isSwipeLeft) { // ปัดไปซ้าย
+            if (isSwipeLeft) {
                 if (currentView === 'right') setCurrentView('center');
                 else if (currentView === 'center') setCurrentView('left');
-            } else if (isSwipeRight) { // ปัดไปขวา
+            } else if (isSwipeRight) {
                 if (currentView === 'left') setCurrentView('center');
                 else if (currentView === 'center') setCurrentView('right');
             }
         }
     } else {
-        // --- การปัดแนวตั้ง (Vertical Swipe) มีผลมากกว่า ---
-        // เราจะให้การปัดขึ้น-ลงทำงานเฉพาะหน้า News Feed (center) เท่านั้น
-        if (currentView === 'center' && Math.abs(diffY) > 50) { // เช็คระยะปัดขั้นต่ำ
+        if (currentView === 'center' && Math.abs(diffY) > 50) {
             if (diffY > 0) {
-                // ปัดขึ้น (นิ้วเลื่อนจากล่างขึ้นบน) -> ไปข่าวถัดไป
                 nextNews();
             } else {
-                // ปัดลง (นิ้วเลื่อนจากบนลงล่าง) -> ไปข่าวก่อนหน้า
                 prevNews();
             }
         }
     }
-
     setIsDragging(false);
 };
 
@@ -211,13 +223,13 @@ const Index = () => {
       const isSwipeLeft = diffX > 0;
       const isSwipeRight = diffX < 0;
 
-      if (isSwipeLeft) { // ปัดจากขวาไปซ้าย
+      if (isSwipeLeft) {
         if (currentView === 'right') {
           setCurrentView('center');
         } else if (currentView === 'center') {
           setCurrentView('left');
         }
-      } else if (isSwipeRight) { // ปัดจากซ้ายไปขวา
+      } else if (isSwipeRight) {
         if (currentView === 'left') {
           setCurrentView('center');
         } else if (currentView === 'center') {
@@ -225,7 +237,6 @@ const Index = () => {
         }
       }
     }
-    
     setIsDragging(false);
 };
 
@@ -263,7 +274,6 @@ const Index = () => {
     );
   }
 
-  // Helper to format date
   const formatDate = (dateString: string) => {
     if (!dateString) return '';
     const parts = dateString.match(/(\d{1,2}) (\S{3})\.? (\d{4}), (\d{2}):(\d{2})/);
@@ -289,7 +299,6 @@ const Index = () => {
     return dateString;
   };
 
-  // Helper function to format the timestamp from the briefing
   const formatBriefTimestamp = (timestamp: { _seconds: number }) => {
     if (!timestamp?._seconds) return 'N/A';
     const date = new Date(timestamp._seconds * 1000);
@@ -298,14 +307,12 @@ const Index = () => {
 
   return (
     <div className="h-screen w-full overflow-hidden bg-black text-white relative">
-      {/* Navigation Indicators */}
       <div className="absolute top-4 left-1/2 transform -translate-x-1/2 flex space-x-2 z-20">
         <div className={`w-2 h-2 rounded-full ${currentView === 'right' ? 'bg-blue-500' : 'bg-gray-600'}`} />
         <div className={`w-2 h-2 rounded-full ${currentView === 'center' ? 'bg-white' : 'bg-gray-600'}`} />
         <div className={`w-2 h-2 rounded-full ${currentView === 'left' ? 'bg-green-500' : 'bg-gray-600'}`} />
       </div>
 
-      {/* Main Content Container */}
       <div 
         className={`flex w-[300%] h-full transition-transform duration-300 ease-out ${
           currentView === 'center' ? '-translate-x-[33.333%]' : 
@@ -317,7 +324,6 @@ const Index = () => {
         onMouseDown={handleMouseDown}
         onMouseUp={handleMouseUp}
       >
-        {/* <<< CHANGE 4: REPLACE ONLY THE "Daily Brief Page" JSX (UPDATED TO DARK THEME) >>> */}
         <div className="w-1/3 h-full flex flex-col bg-gradient-to-br from-gray-900 to-black p-6 overflow-hidden">
           <div className="flex items-center justify-between mb-4 flex-shrink-0">
             <div className="flex items-center">
@@ -348,7 +354,6 @@ const Index = () => {
                     <p className="text-gray-200">{dailyBrief.market_overview}</p>
                 </Card>
                 
-                {/* START OF CHANGE */}
                 <Card className="bg-gray-800/50 p-4 border-none">
                     <h3 className="font-semibold text-lg mb-3 flex items-center text-blue-400">
                         <Activity className="w-5 h-5 mr-2" /> Key Drivers & Outlook
@@ -364,7 +369,6 @@ const Index = () => {
                         ))}
                     </ul>
                 </Card>
-                {/* END OF CHANGE */}
                 
                 <Card className="bg-gray-800/50 p-4 border-none">
                     <h3 className="font-semibold text-lg mb-3 flex items-center text-blue-400">
@@ -400,7 +404,6 @@ const Index = () => {
           </div>
         </div>
         
-        {/* News Feed Page (This is the original, full code) */}
         <div className="w-1/3 h-full relative">
           <div 
             className="absolute inset-0 bg-cover bg-center"
@@ -460,7 +463,6 @@ const Index = () => {
               )}
             </div>
 
-            {/* Navigation Buttons */}
             <div className="flex justify-between items-center">
               <Button 
                 variant="ghost" 
@@ -509,7 +511,6 @@ const Index = () => {
           </div>
         </div>
 
-        {/* AI Summary Page (This is the original, full code) */}
         <div className="w-1/3 h-full bg-gradient-to-br from-gray-900 to-black p-6 overflow-y-auto">
           <div className="flex items-center mb-6">
             <Sparkles className="w-6 h-6 mr-2 text-green-400" />
@@ -518,12 +519,10 @@ const Index = () => {
 
           <div className="space-y-6">
             <div>
-               
               <img src={`https://images.unsplash.com/photo-1611532736597-de2d4265fba3?w=800&h=400&fit=crop`}
                     alt={currentNewsItem.title}
                     className="w-full h-48 object-cover rounded-lg mb-4"
               />
-              
               <h2 className="text-xl font-bold mb-4 leading-tight">
                 {currentNewsItem.title}
               </h2>
@@ -560,7 +559,6 @@ const Index = () => {
               </div>
             )}
 
-            {/* Q&A Section */}
             <Card className="bg-gray-800/50 p-4 rounded-lg border-none">
               <h3 className="text-lg font-semibold mb-3 text-yellow-400 flex items-center">
                 <Sparkles className="w-5 h-5 mr-2" />
