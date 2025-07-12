@@ -35,6 +35,7 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 logger = logging.getLogger(__name__)
 
 # --- Firebase Initialization ---
+db_firestore = None
 try:
     firebase_credentials_json = os.getenv("FIREBASE_CREDENTIALS_JSON")
     if firebase_credentials_json:
