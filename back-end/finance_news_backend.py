@@ -35,7 +35,7 @@ logger = logging.getLogger(__name__)
 
 # --- Firebase Initialization ---
 try:
-    key_path = "back-end/firebase-key.json"
+    key_path = "firebase-key.json"
     if os.path.exists(key_path):
         logger.info(f"WEB APP: Found Firebase key file at {key_path}. Attempting to use it.")
         cred = credentials.Certificate(key_path)
