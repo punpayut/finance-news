@@ -52,6 +52,7 @@ const Index = () => {
 
   const [news, setNews] = useState<NewsItem[]>([]);
   const [stocks, setStocks] = useState<Record<string, StockData>>({});
+  const [briefStocks, setBriefStocks] = useState<Record<string, StockData>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -101,6 +102,7 @@ const Index = () => {
             const briefResult = await briefResponse.json();
             if (briefResult.status === 'success') {
               setDailyBrief(briefResult.data);
+              setBriefStocks(briefResult.data.stocks_in_focus);
             } else {
               setBriefError(briefResult.message);
             }
@@ -390,7 +392,7 @@ const Index = () => {
                     {dailyBrief.movers_and_shakers?.length > 0 ? (
                         <div className="grid grid-cols-2 gap-2">
                             {dailyBrief.movers_and_shakers.map(symbol => {
-                                const stock = stocks[symbol];
+                                const stock = briefStocks[symbol];
                                 if (!stock) return <div key={symbol} className="text-gray-500 text-sm p-2 bg-gray-800 rounded-md">{symbol} (No data)</div>;
                                 return (
                                     <div key={stock.symbol} className="flex justify-between items-center bg-gray-800 p-2 rounded-md text-sm">

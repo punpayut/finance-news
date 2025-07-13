@@ -189,13 +189,32 @@ def get_daily_brief():
             # ดึงข้อมูลจาก Firestore มาเก็บในตัวแปร
             brief_data = docs[0].to_dict()
             
-            # --- START: ส่วนที่แก้ไข ---
+            # --- START: ส่วนที่แก้ไข เวลา ---
             # ตรวจสอบว่า field 'generated_at_utc' มีอยู่จริงและเป็นประเภท datetime หรือไม่
             # ถ้าใช่, ให้แปลงเป็น ISO 8601 string ซึ่งเป็นรูปแบบมาตรฐานที่ JavaScript สามารถ
             # parse ได้ง่ายด้วย new Date()
             if 'generated_at_utc' in brief_data and isinstance(brief_data['generated_at_utc'], datetime):
                 brief_data['generated_at_utc'] = brief_data['generated_at_utc'].isoformat()
             # --- END: ส่วนที่แก้ไข ---
+
+            # --- START: ส่วนแก้ไขที่สำคัญ stock price ---
+            # ดึงราคาหุ้นสำหรับ Stocks in Focus โดยเฉพาะ
+            stocks_in_focus_data = {}
+            symbols_to_fetch = brief_data.get('movers_and_shakers', [])
+
+            if symbols_to_fetch:
+                # ใช้ market_provider ที่มีอยู่แล้วเพื่อดึงข้อมูล
+                logger.info(f"WEB APP (Brief): Fetching stock data for Stocks in Focus: {symbols_to_fetch}")
+                fetched_stocks = market_provider.get_stock_data(symbols_to_fetch)
+                # แปลงข้อมูลเป็น dictionary ที่ส่งให้ front-end ได้
+                stocks_in_focus_data = {symbol: asdict(data) for symbol, data in fetched_stocks.items()}
+
+            # เพิ่มข้อมูลราคาหุ้นเข้าไปใน response ที่จะส่งกลับ
+            response_payload = {
+                "brief": brief_data,
+                "stocks_in_focus": stocks_in_focus_data
+            }
+            # --- END: ส่วนแก้ไขที่สำคัญ ---
 
             logger.info(f"WEB APP: Successfully fetched daily brief with ID: {docs[0].id}")
             # ส่งข้อมูลที่ผ่านการแปลงค่าแล้วกลับไปให้ Front-end
