@@ -186,9 +186,20 @@ def get_daily_brief():
         docs = list(query.stream())
 
         if docs:
-            # Return the single latest brief found
+            # ดึงข้อมูลจาก Firestore มาเก็บในตัวแปร
+            brief_data = docs[0].to_dict()
+            
+            # --- START: ส่วนที่แก้ไข ---
+            # ตรวจสอบว่า field 'generated_at_utc' มีอยู่จริงและเป็นประเภท datetime หรือไม่
+            # ถ้าใช่, ให้แปลงเป็น ISO 8601 string ซึ่งเป็นรูปแบบมาตรฐานที่ JavaScript สามารถ
+            # parse ได้ง่ายด้วย new Date()
+            if 'generated_at_utc' in brief_data and isinstance(brief_data['generated_at_utc'], datetime):
+                brief_data['generated_at_utc'] = brief_data['generated_at_utc'].isoformat()
+            # --- END: ส่วนที่แก้ไข ---
+
             logger.info(f"WEB APP: Successfully fetched daily brief with ID: {docs[0].id}")
-            return jsonify({"status": "success", "data": docs[0].to_dict()})
+            # ส่งข้อมูลที่ผ่านการแปลงค่าแล้วกลับไปให้ Front-end
+            return jsonify({"status": "success", "data": brief_data})
         else:
             # This case happens if no brief has ever been generated
             logger.warning("WEB APP: No daily brief document was found in the collection.")
