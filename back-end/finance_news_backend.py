@@ -82,6 +82,7 @@ class NewsItem:
     published: Any # Use 'any' to handle both datetime and string from Firestore
     content: str = ""
     analysis: Optional[Dict[str, Any]] = None
+    processed_at: Any = None
 
 # --- Utility Functions ---
 def is_valid_ticker(symbol: str) -> bool:
