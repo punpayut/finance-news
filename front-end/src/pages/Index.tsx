@@ -38,7 +38,10 @@ interface DailyBrief {
   key_drivers_and_outlook: string[];
   movers_and_shakers: string[];
   period: 'AM' | 'PM';
-  generated_at_utc: string;
+  generated_at_utc: {
+    _seconds: number;
+    _nanoseconds: number;
+  };
 }
 
 type SwipeDirection = 'center' | 'left' | 'right';
@@ -52,7 +55,6 @@ const Index = () => {
 
   const [news, setNews] = useState<NewsItem[]>([]);
   const [stocks, setStocks] = useState<Record<string, StockData>>({});
-  const [briefStocks, setBriefStocks] = useState<Record<string, StockData>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -102,7 +104,6 @@ const Index = () => {
             const briefResult = await briefResponse.json();
             if (briefResult.status === 'success') {
               setDailyBrief(briefResult.data);
-              setBriefStocks(briefResult.data.stocks_in_focus);
             } else {
               setBriefError(briefResult.message);
             }
@@ -298,27 +299,11 @@ const Index = () => {
     return dateString;
   };
 
-  const formatBriefTimestamp = (isoString: string) => {
-  // ถ้าไม่มี string หรือเป็น string ว่างๆ ให้คืนค่า N/A
-  if (!isoString) return 'N/A';
-  try {
-    const date = new Date(isoString);
-    // ตรวจสอบว่าเป็นวันที่ถูกต้องหรือไม่
-    if (isNaN(date.getTime())) {
-      return 'N/A';
-    }
-    return date.toLocaleString('en-US', { 
-        month: 'short', 
-        day: 'numeric', 
-        hour: '2-digit', 
-        minute: '2-digit', 
-        hour12: true 
-    });
-  } catch (error) {
-    console.error("Failed to parse brief timestamp:", isoString, error);
-    return 'N/A';
-  }
-};
+  const formatBriefTimestamp = (timestamp: { _seconds: number }) => {
+    if (!timestamp?._seconds) return 'N/A';
+    const date = new Date(timestamp._seconds * 1000);
+    return date.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true });
+  };
 
   return (
     <div className="h-screen w-full overflow-hidden bg-black text-white relative">
@@ -392,7 +377,7 @@ const Index = () => {
                     {dailyBrief.movers_and_shakers?.length > 0 ? (
                         <div className="grid grid-cols-2 gap-2">
                             {dailyBrief.movers_and_shakers.map(symbol => {
-                                const stock = briefStocks[symbol];
+                                const stock = stocks[symbol];
                                 if (!stock) return <div key={symbol} className="text-gray-500 text-sm p-2 bg-gray-800 rounded-md">{symbol} (No data)</div>;
                                 return (
                                     <div key={stock.symbol} className="flex justify-between items-center bg-gray-800 p-2 rounded-md text-sm">
