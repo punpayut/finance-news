@@ -275,7 +275,7 @@ def ask_question():
         return jsonify({"status": "error", "message": "Database connection not available for context."}), 500
 
     try:
-        query = analyzed_news_collection.order_by("published", direction=firestore.Query.DESCENDING).limit(10)
+        query = analyzed_news_collection.order_by("published", direction=firestore.Query.DESCENDING).limit(30)
         docs = query.stream()
         news_context = [NewsItem(**doc.to_dict()) for doc in docs]
 
