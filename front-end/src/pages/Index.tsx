@@ -38,10 +38,7 @@ interface DailyBrief {
   key_drivers_and_outlook: string[];
   movers_and_shakers: string[];
   period: 'AM' | 'PM';
-  generated_at_utc: {
-    _seconds: number;
-    _nanoseconds: number;
-  };
+  generated_at_utc: string;
 }
 
 type SwipeDirection = 'center' | 'left' | 'right';
@@ -299,11 +296,27 @@ const Index = () => {
     return dateString;
   };
 
-  const formatBriefTimestamp = (timestamp: { _seconds: number }) => {
-    if (!timestamp?._seconds) return 'N/A';
-    const date = new Date(timestamp._seconds * 1000);
-    return date.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true });
-  };
+  const formatBriefTimestamp = (isoString: string) => {
+  // ถ้าไม่มี string หรือเป็น string ว่างๆ ให้คืนค่า N/A
+  if (!isoString) return 'N/A';
+  try {
+    const date = new Date(isoString);
+    // ตรวจสอบว่าเป็นวันที่ถูกต้องหรือไม่
+    if (isNaN(date.getTime())) {
+      return 'N/A';
+    }
+    return date.toLocaleString('en-US', { 
+        month: 'short', 
+        day: 'numeric', 
+        hour: '2-digit', 
+        minute: '2-digit', 
+        hour12: true 
+    });
+  } catch (error) {
+    console.error("Failed to parse brief timestamp:", isoString, error);
+    return 'N/A';
+  }
+};
 
   return (
     <div className="h-screen w-full overflow-hidden bg-black text-white relative">
