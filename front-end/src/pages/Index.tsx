@@ -388,19 +388,21 @@ const Index = () => {
                         <Eye className="w-5 h-5 mr-2" /> Stocks in Focus
                     </h3>
                     {dailyBrief.movers_and_shakers?.length > 0 ? (
-                        <div className="grid grid-cols-2 gap-2">
-                            {dailyBrief.movers_and_shakers.map(symbol => {
-                                const stock = stocks[symbol];
-                                if (!stock) return <div key={symbol} className="text-gray-500 text-sm p-2 bg-gray-800 rounded-md">{symbol} (No data)</div>;
-                                return (
-                                    <div key={stock.symbol} className="flex justify-between items-center bg-gray-800 p-2 rounded-md text-sm">
-                                        <span className="font-bold">{stock.symbol}</span>
-                                        <span className={stock.change >= 0 ? 'text-green-400' : 'text-red-400'}>${stock.price}</span>
-                                    </div>
-                                );
-                            })}
-                        </div>
-                    ) : ( <p className="text-gray-400">No specific stocks highlighted.</p> )}
+    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+        {dailyBrief.movers_and_shakers.map(symbol => (
+            // สร้าง Tag <a> เพื่อทำเป็นลิงก์
+            <a 
+                key={symbol}
+                href={`https://finance.yahoo.com/quote/${symbol}`} // สร้าง URL แบบไดนามิก
+                target="_blank" // เปิดในแท็บใหม่
+                rel="noopener noreferrer" // เพื่อความปลอดภัย
+                className="block p-2 bg-gray-800 rounded-md text-center font-semibold text-white hover:bg-gray-700 transition-colors"
+            >
+                {symbol} {/* แสดงแค่ Ticker Symbol */}
+            </a>
+        ))}
+    </div>
+) : ( <p className="text-gray-400">No specific stocks highlighted.</p> )}
                 </Card>
               </div>
             ) : (
