@@ -404,10 +404,49 @@ const Index = () => {
             <div>
               <img src={`https://images.unsplash.com/photo-1611532736597-de2d4265fba3?w=800&h=400&fit=crop`} alt={currentNewsItem.title} className="w-full h-48 object-cover rounded-lg mb-4" />
               <h2 className="text-xl font-bold mb-4 leading-tight">{currentNewsItem.title}</h2>
+              <p className="text-gray-300 text-sm mb-2">{formatDate(currentNewsItem.published)}</p>
             </div>
-            <div><h3 className="text-lg font-semibold mb-3 text-blue-400">Full Article</h3><p className="text-gray-300 leading-relaxed mb-4">{currentNewsItem.content || 'No full article content available.'}</p></div>
-            <div className="bg-gray-800/50 p-4 rounded-lg"><h3 className="text-lg font-semibold mb-3 text-green-400 flex items-center"><TrendingUp className="w-5 h-5 mr-2" />Impact Analysis</h3><p className="text-gray-200 leading-relaxed">{currentNewsItem.analysis?.summary_en || 'No AI analysis available.'}</p></div>
-            {currentNewsItem.link && <div className="bg-gray-800/30 p-4 rounded-lg"><h3 className="text-lg font-semibold mb-2 text-purple-400">Source</h3><a href={currentNewsItem.link} className="text-blue-400 hover:text-blue-300 underline" target="_blank" rel="noopener noreferrer">Read original article</a></div>}
+// --- Updated Section for AI Analysis View ---
+
+// 1. Display the simplified English summary
+<div>
+  <h3 className="text-lg font-semibold mb-3 text-blue-400">News Summary</h3>
+  <p className="text-gray-300 leading-relaxed mb-4">
+    {currentNewsItem.analysis?.summary_en || 'No summary available.'}
+  </p>
+</div>
+
+// 2. Display the new bullet-point impact analysis
+<div className="bg-gray-800/50 p-4 rounded-lg">
+  <h3 className="font-semibold text-lg mb-3 flex items-center text-green-400">
+    <TrendingUp className="w-5 h-5 mr-2" />
+    Potential Impact
+  </h3>
+  {currentNewsItem.analysis?.impact_analysis && currentNewsItem.analysis.impact_analysis.length > 0 ? (
+    <ul className="list-disc list-inside space-y-2 text-gray-200">
+      {currentNewsItem.analysis.impact_analysis.map((point, index) => (
+        <li key={index}>{point}</li>
+      ))}
+    </ul>
+  ) : (
+    <p className="text-gray-400">No detailed impact analysis available.</p>
+  )}
+</div>
+
+// 3. Keep the source link section as it is
+{currentNewsItem.link && (
+  <div className="bg-gray-800/30 p-4 rounded-lg">
+    <h3 className="text-lg font-semibold mb-2 text-purple-400">Source</h3>
+    <a 
+      href={currentNewsItem.link} 
+      className="text-blue-400 hover:text-blue-300 underline"
+      target="_blank"
+      rel="noopener noreferrer"
+    >
+      Read original article on {currentNewsItem.source}
+    </a>
+  </div>
+)}
             <Card className="bg-gray-800/50 p-4 rounded-lg border-none">
               <h3 className="text-lg font-semibold mb-3 text-yellow-400 flex items-center"><Sparkles className="w-5 h-5 mr-2" />Ask AI a Question</h3>
               <Textarea placeholder="Type your question about the news..." value={userQuestion} onChange={(e) => setUserQuestion(e.target.value)} className="mb-3 bg-gray-700 text-white border-gray-600 focus:border-blue-500"/>
