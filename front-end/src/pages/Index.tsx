@@ -569,7 +569,7 @@ const Index = () => {
                   target="_blank"
                   rel="noopener noreferrer"
                 >
-                  Read original article on {currentNewsItem.source}
+                  Read original article
                 </a>
               </div>
             )}
