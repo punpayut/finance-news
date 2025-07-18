@@ -406,17 +406,12 @@ const Index = () => {
               <h2 className="text-xl font-bold mb-4 leading-tight">{currentNewsItem.title}</h2>
               <p className="text-gray-300 text-sm mb-2">{formatDate(currentNewsItem.published)}</p>
             </div>
-// --- Updated Section for AI Analysis View ---
-
-// 1. Display the simplified English summary
 <div>
   <h3 className="text-lg font-semibold mb-3 text-blue-400">News Summary</h3>
   <p className="text-gray-300 leading-relaxed mb-4">
     {currentNewsItem.analysis?.summary_en || 'No summary available.'}
   </p>
 </div>
-
-// 2. Display the new bullet-point impact analysis
 <div className="bg-gray-800/50 p-4 rounded-lg">
   <h3 className="font-semibold text-lg mb-3 flex items-center text-green-400">
     <TrendingUp className="w-5 h-5 mr-2" />
@@ -433,7 +428,6 @@ const Index = () => {
   )}
 </div>
 
-// 3. Keep the source link section as it is
 {currentNewsItem.link && (
   <div className="bg-gray-800/30 p-4 rounded-lg">
     <h3 className="text-lg font-semibold mb-2 text-purple-400">Source</h3>
