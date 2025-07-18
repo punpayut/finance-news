@@ -193,49 +193,59 @@ def get_daily_brief():
 
 @app.route('/api/main_feed')
 def get_main_feed():
-    if not analyzed_news_collection or not metadata_collection:
+    # <<< MODIFICATION: We no longer need metadata_collection for this endpoint >>>
+    if not analyzed_news_collection:
         return jsonify({"status": "error", "message": "Database connection not available."}), 500
     
     try:
-        # --- Start Pagination Logic ---
+        # Step 1: Get pagination parameters from the request query string
         page = int(request.args.get('page', 1))
-        limit = int(request.args.get('limit', 10)) # Default page size to 10
+        limit = int(request.args.get('limit', 10))
         
-        # Get total news count efficiently from metadata document
-        total_news_count = 0
-        metadata_doc = metadata_collection.document('analyzed_news_metadata').get()
-        if metadata_doc.exists:
-            total_news_count = metadata_doc.to_dict().get('count', 0)
-        else:
-            logger.warning("Metadata document for 'analyzed_news' not found. Pagination 'totalPages' might be inaccurate. Please create this document.")
+        # <<< MODIFICATION: Hardcode the total number of news to 50 >>>
+        # This ensures the app only ever considers the latest 50 articles.
+        TOTAL_NEWS_TO_SHOW = 50
         
-        # Build query with cursor for efficient pagination
+        # Prevent users from requesting pages beyond the limit
+        if (page - 1) * limit >= TOTAL_NEWS_TO_SHOW:
+            return jsonify({
+                "status": "success", 
+                "data": {
+                    "news": [], 
+                    "stocks": {}, 
+                    "pagination": {
+                        "currentPage": page,
+                        "pageSize": limit,
+                        "totalNews": TOTAL_NEWS_TO_SHOW,
+                        "totalPages": math.ceil(TOTAL_NEWS_TO_SHOW / limit)
+                    }
+                }
+            }), 200
+
+        # Step 2: Build the base query (this remains the same)
         base_query = analyzed_news_collection.order_by("published", direction=firestore.Query.DESCENDING)
+
+        # Step 3: Use a cursor for pagination (this remains the same)
         query = base_query
-        
+        cursor = None
         if page > 1:
             offset = (page - 1) * limit
-            # Fetch only the documents needed to find the cursor (the last one)
             last_doc_query = base_query.limit(offset).get()
             if len(last_doc_query) > 0:
                 cursor = last_doc_query[-1]
                 query = base_query.start_after(cursor)
-            else:
-                # This case handles requesting a page that is out of bounds
-                return jsonify({"status": "success", "data": {"news": [], "stocks": {}, "pagination": {"currentPage": page, "totalPages": 0, "totalNews": 0}}})
 
-        # Execute the final query for the current page
+        # Step 4: Execute the query for the current page, but limit the total scope.
+        # The limit() here applies to the current page's fetch, not the total.
         docs = query.limit(limit).stream()
         news_from_db_raw = [doc.to_dict() for doc in docs]
         
-        # --- End Pagination Logic ---
-        
-        # Process only the items for the current page
+        # Step 5: Process the news items for the current page (same logic)
         processed_news = []
         all_raw_symbols = set()
         for item in news_from_db_raw:
+            # ... (the existing processing logic is fine, no changes needed here) ...
             if 'analysis' not in item or not isinstance(item['analysis'], dict): item['analysis'] = {}
-            
             firestore_sentiment = item['analysis'].get('sentiment', 'Neutral')
             if firestore_sentiment == 'Positive': item['analysis']['impact'] = 'Bullish'
             elif firestore_sentiment == 'Negative': item['analysis']['impact'] = 'Bearish'
@@ -249,37 +259,34 @@ def get_main_feed():
             if not isinstance(affected_symbols, list): affected_symbols = []
             item['analysis']['affected_symbols'] = affected_symbols
             
-            if isinstance(item.get('published'), datetime):
-                item['published'] = format_datetime_to_thai(item['published'])
+            if isinstance(item.get('published'), datetime): item['published'] = format_datetime_to_thai(item['published'])
             elif isinstance(item.get('published'), str):
-                try:
-                    dt_obj = datetime.fromisoformat(item['published'].replace('Z', '+00:00'))
-                    item['published'] = format_datetime_to_thai(dt_obj)
-                except ValueError:
-                    pass
+                try: dt_obj = datetime.fromisoformat(item['published'].replace('Z', '+00:00')); item['published'] = format_datetime_to_thai(dt_obj)
+                except ValueError: pass
             
             all_raw_symbols.update(sym.upper() for sym in item['analysis']['affected_symbols'])
             processed_news.append(item)
         
+        # Step 6: Get stock data for the current page's news (same logic)
         valid_symbols = {sym for sym in all_raw_symbols if is_valid_ticker(sym)}
         stock_data = market_provider.get_stock_data(list(valid_symbols)[:20])
         
-        # Build the new response structure with pagination info
+        # Step 7: Build the response structure with the hardcoded pagination info
         response_data = {
             "news": processed_news,
             "stocks": {symbol: asdict(data) for symbol, data in stock_data.items()},
             "pagination": {
                 "currentPage": page,
                 "pageSize": limit,
-                "totalNews": total_news_count,
-                "totalPages": math.ceil(total_news_count / limit) if total_news_count > 0 else 1
+                "totalNews": TOTAL_NEWS_TO_SHOW,
+                "totalPages": math.ceil(TOTAL_NEWS_TO_SHOW / limit)
             }
         }
         return jsonify({"status": "success", "data": response_data})
     except Exception as e:
         logger.error(f"WEB APP: Error fetching feed from Firestore: {e}", exc_info=True)
         return jsonify({"status": "error", "message": "Could not load feed from database."}), 500
-
+    
 @app.route('/api/ask', methods=['POST'])
 def ask_question():
     data = request.get_json()
