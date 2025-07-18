@@ -1,14 +1,15 @@
-# finance_news_backend.py (Final Update with Minimal Changes)
+# finance_news_backend.py (Final Version with Pagination)
 
 """
 FinanceFlow Web App (Production Ready)
 - This is the lightweight web server component of the FinanceFlow project.
 - Its main responsibilities are:
   1. Serving the frontend application (HTML/CSS/JS).
-  2. Fetching pre-analyzed news from Firestore.
-  3. Fetching real-time stock prices.
+  2. Fetching pre-analyzed news from Firestore with pagination.
+  3. Fetching real-time stock prices for news on the current page.
   4. Handling user Q&A requests by querying the AI.
 - Includes a data sanitization step to validate ticker symbols from the AI.
+- Pagination is implemented on the /api/main_feed endpoint.
 """
 
 # --- Imports ---
@@ -18,6 +19,7 @@ from datetime import datetime
 from typing import List, Dict, Any, Optional
 import yfinance as yf
 from dataclasses import dataclass, asdict
+import math  # Added for pagination calculation
 
 from groq import Groq
 from flask import Flask, request, jsonify, render_template
@@ -27,7 +29,7 @@ from dotenv import load_dotenv
 
 import firebase_admin
 from firebase_admin import credentials, firestore
-import json # Import json module
+import json
 
 # --- Initialization ---
 load_dotenv()
@@ -36,6 +38,10 @@ logger = logging.getLogger(__name__)
 
 # --- Firebase Initialization ---
 db_firestore = None
+analyzed_news_collection = None
+daily_briefs_collection = None
+metadata_collection = None
+
 try:
     firebase_credentials_json = os.getenv("FIREBASE_CREDENTIALS_JSON")
     if firebase_credentials_json:
@@ -47,21 +53,24 @@ try:
             logger.info(f"WEB APP: Found Firebase key file at {key_path}. Attempting to use it.")
             cred = credentials.Certificate(key_path)
         else:
-            logger.error(f"WEB APP: Firebase credentials not found. Neither FIREBASE_CREDENTIALS_JSON env var nor file at {key_path} exists.")
+            raise FileNotFoundError(f"Firebase credentials not found. Neither FIREBASE_CREDENTIALS_JSON env var nor file at {key_path} exists.")
     
-    # Initialize Firebase app and Firestore client after credentials are set
     firebase_admin.initialize_app(cred)
     db_firestore = firestore.client()
 
+    # Define all collection references
     analyzed_news_collection = db_firestore.collection('analyzed_news')
-    # <<< CHANGE 1: Add the daily_briefs collection reference here >>>
     daily_briefs_collection = db_firestore.collection('daily_briefs')
+    # This collection is crucial for efficient pagination counting
+    metadata_collection = db_firestore.collection('collections_metadata')
+    
     logger.info("WEB APP: Firebase initialized successfully.")
 except Exception as e:
     logger.error(f"WEB APP: Failed to initialize Firebase: {e}", exc_info=True)
+    # Ensure all clients are None on failure
     analyzed_news_collection = None
-    # <<< CHANGE 1.1: Ensure the new collection is also None on failure >>>
     daily_briefs_collection = None
+    metadata_collection = None
 
 
 # --- Data Classes ---
@@ -79,7 +88,7 @@ class NewsItem:
     title: str
     link: str
     source: str
-    published: Any # Use 'any' to handle both datetime and string from Firestore
+    published: Any
     content: str = ""
     analysis: Optional[Dict[str, Any]] = None
     processed_at: Any = None
@@ -87,14 +96,10 @@ class NewsItem:
 # --- Utility Functions ---
 def is_valid_ticker(symbol: str) -> bool:
     """A simple validator to filter out invalid ticker symbols returned by the AI."""
-    if not symbol or not isinstance(symbol, str):
-        return False
-    if len(symbol) > 6 or len(symbol) < 1:
-        return False
-    if ' ' in symbol:
-        return False
-    if not re.match(r'^[A-Z0-9.-]+$', symbol):
-        return False
+    if not symbol or not isinstance(symbol, str): return False
+    if len(symbol) > 6 or len(symbol) < 1: return False
+    if ' ' in symbol: return False
+    if not re.match(r'^[A-Z0-9.-]+$', symbol): return False
     return True
 
 def format_datetime_to_thai(dt: datetime) -> str:
@@ -103,12 +108,7 @@ def format_datetime_to_thai(dt: datetime) -> str:
         1: "ม.ค.", 2: "ก.พ.", 3: "มี.ค.", 4: "เม.ย.", 5: "พ.ค.", 6: "มิ.ย.",
         7: "ก.ค.", 8: "ส.ค.", 9: "ก.ย.", 10: "ต.ค.", 11: "พ.ย.", 12: "ธ.ค."
     }
-    day = dt.day
-    month = thai_months[dt.month]
-    year = dt.year
-    hour = dt.hour
-    minute = dt.minute
-    return f"{day} {month} {year}, {hour:02d}:{minute:02d}"
+    return f"{dt.day} {thai_months[dt.month]} {dt.year}, {dt.hour:02d}:{dt.minute:02d}"
 
 # --- Service Classes ---
 class MarketDataProvider:
@@ -171,41 +171,21 @@ def index():
     return render_template('index.html')
 
 
-# <<< CHANGE 2: ADD THE NEW ENDPOINT FOR THE DAILY BRIEFING >>>
 @app.route('/api/daily_brief')
 def get_daily_brief():
     if not daily_briefs_collection:
         return jsonify({"status": "error", "message": "Database connection not available."}), 500
     try:
-        # Query for the latest brief by ordering by the document ID ("__name__") descending.
-        # This works because "YYYY-MM-DD_PM" comes after "YYYY-MM-DD_AM".
-        query = daily_briefs_collection.order_by(
-            "__name__",  # The special field path for the document ID
-            direction=firestore.Query.DESCENDING
-        ).limit(1)
-        
+        query = daily_briefs_collection.order_by("__name__", direction=firestore.Query.DESCENDING).limit(1)
         docs = list(query.stream())
-
         if docs:
-            # ดึงข้อมูลจาก Firestore มาเก็บในตัวแปร
             brief_data = docs[0].to_dict()
-            
-            # --- START: ส่วนที่แก้ไข ---
-            # ตรวจสอบว่า field 'generated_at_utc' มีอยู่จริงและเป็นประเภท datetime หรือไม่
-            # ถ้าใช่, ให้แปลงเป็น ISO 8601 string ซึ่งเป็นรูปแบบมาตรฐานที่ JavaScript สามารถ
-            # parse ได้ง่ายด้วย new Date()
             if 'generated_at_utc' in brief_data and isinstance(brief_data['generated_at_utc'], datetime):
                 brief_data['generated_at_utc'] = brief_data['generated_at_utc'].isoformat()
-            # --- END: ส่วนที่แก้ไข ---
-
-            logger.info(f"WEB APP: Successfully fetched daily brief with ID: {docs[0].id}")
-            # ส่งข้อมูลที่ผ่านการแปลงค่าแล้วกลับไปให้ Front-end
             return jsonify({"status": "success", "data": brief_data})
         else:
-            # This case happens if no brief has ever been generated
             logger.warning("WEB APP: No daily brief document was found in the collection.")
             return jsonify({"status": "error", "message": "No daily brief is available yet."}), 404
-            
     except Exception as e:
         logger.error(f"WEB APP: Error fetching daily brief from Firestore: {e}", exc_info=True)
         return jsonify({"status": "error", "message": "Could not load the daily brief."}), 500
@@ -213,17 +193,47 @@ def get_daily_brief():
 
 @app.route('/api/main_feed')
 def get_main_feed():
-    if not analyzed_news_collection:
+    if not analyzed_news_collection or not metadata_collection:
         return jsonify({"status": "error", "message": "Database connection not available."}), 500
+    
     try:
-        query = analyzed_news_collection.order_by("published", direction=firestore.Query.DESCENDING).limit(50)
-        docs = query.stream()
+        # --- Start Pagination Logic ---
+        page = int(request.args.get('page', 1))
+        limit = int(request.args.get('limit', 10)) # Default page size to 10
+        
+        # Get total news count efficiently from metadata document
+        total_news_count = 0
+        metadata_doc = metadata_collection.document('analyzed_news_metadata').get()
+        if metadata_doc.exists:
+            total_news_count = metadata_doc.to_dict().get('count', 0)
+        else:
+            logger.warning("Metadata document for 'analyzed_news' not found. Pagination 'totalPages' might be inaccurate. Please create this document.")
+        
+        # Build query with cursor for efficient pagination
+        base_query = analyzed_news_collection.order_by("published", direction=firestore.Query.DESCENDING)
+        query = base_query
+        
+        if page > 1:
+            offset = (page - 1) * limit
+            # Fetch only the documents needed to find the cursor (the last one)
+            last_doc_query = base_query.limit(offset).get()
+            if len(last_doc_query) > 0:
+                cursor = last_doc_query[-1]
+                query = base_query.start_after(cursor)
+            else:
+                # This case handles requesting a page that is out of bounds
+                return jsonify({"status": "success", "data": {"news": [], "stocks": {}, "pagination": {"currentPage": page, "totalPages": 0, "totalNews": 0}}})
+
+        # Execute the final query for the current page
+        docs = query.limit(limit).stream()
         news_from_db_raw = [doc.to_dict() for doc in docs]
         
+        # --- End Pagination Logic ---
+        
+        # Process only the items for the current page
         processed_news = []
         all_raw_symbols = set()
         for item in news_from_db_raw:
-            if 'analysis' not in item or not isinstance(item['analysis'], dict): item['analysis'] = {}
             if 'analysis' not in item or not isinstance(item['analysis'], dict): item['analysis'] = {}
             
             firestore_sentiment = item['analysis'].get('sentiment', 'Neutral')
@@ -246,19 +256,25 @@ def get_main_feed():
                     dt_obj = datetime.fromisoformat(item['published'].replace('Z', '+00:00'))
                     item['published'] = format_datetime_to_thai(dt_obj)
                 except ValueError:
-                    logger.warning(f"WEB APP: Could not parse published date string '{item['published']}', keeping as is.")
                     pass
             
             all_raw_symbols.update(sym.upper() for sym in item['analysis']['affected_symbols'])
             processed_news.append(item)
         
         valid_symbols = {sym for sym in all_raw_symbols if is_valid_ticker(sym)}
-        logger.info(f"WEB APP: Raw symbols from AI: {all_raw_symbols}")
-        logger.info(f"WEB APP: Validated symbols for fetching: {valid_symbols}")
-        
         stock_data = market_provider.get_stock_data(list(valid_symbols)[:20])
         
-        response_data = { "news": processed_news, "stocks": {symbol: asdict(data) for symbol, data in stock_data.items()} }
+        # Build the new response structure with pagination info
+        response_data = {
+            "news": processed_news,
+            "stocks": {symbol: asdict(data) for symbol, data in stock_data.items()},
+            "pagination": {
+                "currentPage": page,
+                "pageSize": limit,
+                "totalNews": total_news_count,
+                "totalPages": math.ceil(total_news_count / limit) if total_news_count > 0 else 1
+            }
+        }
         return jsonify({"status": "success", "data": response_data})
     except Exception as e:
         logger.error(f"WEB APP: Error fetching feed from Firestore: {e}", exc_info=True)
@@ -275,6 +291,7 @@ def ask_question():
         return jsonify({"status": "error", "message": "Database connection not available for context."}), 500
 
     try:
+        # Context is still based on the latest 30 news items for relevance
         query = analyzed_news_collection.order_by("published", direction=firestore.Query.DESCENDING).limit(30)
         docs = query.stream()
         news_context = [NewsItem(**doc.to_dict()) for doc in docs]
@@ -287,5 +304,4 @@ def ask_question():
 
 if __name__ == '__main__':
     print("🚀 Starting FinanceFlow Web App [LOCAL DEVELOPMENT MODE]")
-    # In production, Gunicorn will run the app. This block is for local development only.
     app.run(debug=True, host='0.0.0.0', port=5000)
