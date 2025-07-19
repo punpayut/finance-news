@@ -299,7 +299,7 @@ def ask_question():
 
     try:
         # Context is still based on the latest 30 news items for relevance
-        query = analyzed_news_collection.order_by("published", direction=firestore.Query.DESCENDING).limit(30)
+        query = analyzed_news_collection.order_by("published", direction=firestore.Query.DESCENDING).limit(50)
         docs = query.stream()
         news_context = [NewsItem(**doc.to_dict()) for doc in docs]
 
